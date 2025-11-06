@@ -1,0 +1,358 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Balance Stock</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@4.7.2/dist/full.min.css" rel="stylesheet">
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=K2D:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+
+<style>
+  body { 
+    font-family: 'K2D', sans-serif; 
+    background: linear-gradient(135deg, #eef2ff, #e0e7ff); 
+    min-height: 100vh; 
+  }
+  .hover-glow:hover { 
+    box-shadow: 0 0 20px rgba(99,102,241,0.4); 
+    transform: translateY(-2px); 
+    transition: all 0.3s ease; 
+  }
+
+  /* ✅ บังคับสีหัวตารางให้ชัด */
+  thead.bg-indigo-600 th { 
+    background-color: #4f46e5 !important; 
+    color: white !important; 
+    position: sticky;
+    top: 0;
+    z-index: 20;
+  }
+  thead.bg-blue-600 th {
+    background-color: #2563eb !important;
+    color: white !important;
+    position: sticky;
+    top: 0;
+    z-index: 20;
+  }
+
+  table th { 
+    text-align: center; 
+    font-weight: 600;
+  }
+    #sku-pagination, #group-pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+  /* ✅ ทำให้ปุ่มอยู่ใน card และไม่เกินขอบ */
+.card {
+  overflow: hidden;              /* ซ่อนส่วนที่เกิน */
+  position: relative;
+}
+
+.card .pagination-container {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  padding-bottom: 0.5rem;          /* เพิ่ม padding ล่างให้หายเกิน */
+  margin-top: 0.5rem;
+}
+/* ✅ Loading Spinner Style */
+#loading-overlay {
+  animation: fadeIn 0.3s ease;
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+
+</style>
+
+</head>
+<body>
+    <!-- ✅ Loading Overlay -->
+    <div id="loading-overlay" class="fixed inset-0 bg-white/80 backdrop-blur-sm flex flex-col items-center justify-center z-50 hidden">
+    <div class="w-14 h-14 border-4 border-indigo-400 border-t-transparent rounded-full animate-spin mb-4"></div>
+    <p class="text-gray-700 font-medium">กำลังโหลดข้อมูล....</p>
+    </div>
+
+  <div class="container mx-auto px-4 py-8">
+    <div class="text-center mb-8">
+      <h1 class="text-5xl font-bold text-indigo-700 mb-2">Stock Summary</h1>
+    </div>
+
+    <div class="flex justify-end gap-3 mb-6">
+      <button id="refresh-btn" class="btn bg-gradient-to-r from-sky-500 to-blue-500 text-white hover-glow flex items-center gap-2">
+        <i class="fa-solid fa-arrows-rotate text-white text-lg"></i>
+        <span>Refresh</span>
+      </button>
+      <button id="export-btn" class="btn bg-gradient-to-r from-green-600 to-green-500 text-white hover-glow flex items-center gap-2">
+        <i class="fa-solid fa-file-excel text-white text-lg"></i>
+        <span>Export</span>
+      </button>
+    </div>
+
+    <div id="summary-cards" class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8"></div>
+
+    <div class="tabs tabs-boxed bg-white/70 backdrop-blur-sm mb-6 p-2 rounded-2xl shadow-lg">
+      <a id="tab-sku" class="tab tab-lg tab-active">Summary by SKU</a>
+      <a id="tab-group" class="tab tab-lg">Summary by Group</a>
+    </div>
+
+    <!-- SKU Table -->
+    <div id="sku-section" class="card bg-white shadow-xl rounded-2xl p-6">
+      <input id="sku-search" type="text" placeholder="ค้นหา SKU, Description, Group..." class="input input-bordered w-full max-w-xs mb-4">
+        <div class="overflow-x-auto">
+        <table class="table table-zebra w-full">
+            <thead class="bg-indigo-700 text-white">
+            <tr>
+                <th>Rank</th>
+                <th>Group</th>
+                <th>Code</th>
+                <th>Description</th>
+                <th>Weight</th>
+                <th>Unit</th>
+                <th>Qty/SKU</th>
+                <th>Qty/Ton</th>
+                <th>Cost + VAT</th>
+                <th>Total Value</th>
+            </tr>
+            </thead>
+            <tbody id="sku-tbody"></tbody>
+        </table>
+        </div>
+        <!-- ✅ ปุ่มอยู่ใน card พร้อม padding -->
+        <div class="mt-6 flex justify-center" id="sku-pagination"></div>
+    </div>
+
+    <!-- Group Table -->
+    <div id="group-section" class="card bg-white shadow-xl rounded-2xl p-6 hidden">
+      <input id="group-search" type="text" placeholder="ค้นหา Group..." class="input input-bordered w-full max-w-xs mb-4">
+      <div class="overflow-x-auto">
+        <table class="table table-zebra w-full">
+          <thead class="bg-blue-700 text-white">
+            <tr>
+              <th>Rank</th>
+              <th>Group</th>
+              <th>Qty/SKU</th>
+              <th>Qty/Ton</th>
+              <th>Total Value</th>
+            </tr>
+          </thead>
+          <tbody id="group-tbody"></tbody>
+        </table>
+      </div>
+      <div class="flex justify-center mt-4" id="group-pagination"></div>
+    </div>
+  </div>
+
+<script>
+let skuData=[], groupData=[];
+let filteredSkuData=[], filteredGroupData=[];
+let currentSkuPage=1, currentGroupPage=1;
+const rowsPerPage = 10; // ✅ แสดง 10 แถวต่อหน้า
+
+const formatNum=n=>isNaN(n)?"-":new Intl.NumberFormat('th-TH',{minimumFractionDigits:2,maximumFractionDigits:2}).format(n);
+
+function rankBadge(i){return i===0?'bg-yellow-200':i===1?'bg-gray-200':i===2?'bg-amber-100':'';}
+
+function updateSummary(){
+  const totalSku=skuData.reduce((s,i)=>s+i.qtySku,0);
+  const totalTon=skuData.reduce((s,i)=>s+i.qtyTon,0);
+  const totalVal=skuData.reduce((s,i)=>s+i.totalValue,0);
+  document.getElementById('summary-cards').innerHTML=`
+    <div class="card bg-gradient-to-br from-indigo-500 to-indigo-600 text-white shadow-xl hover-glow"><div class="card-body"><h3>Total Qty/SKU</h3><p class="text-4xl font-bold">${formatNum(totalSku)}</p></div></div>
+    <div class="card bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-xl hover-glow"><div class="card-body"><h3>Total Qty/Ton</h3><p class="text-4xl font-bold">${formatNum(totalTon)}</p></div></div>
+    <div class="card bg-gradient-to-br from-green-500 to-green-600 text-white shadow-xl hover-glow"><div class="card-body"><h3>Total Value</h3><p class="text-4xl font-bold">฿${formatNum(totalVal)}</p></div></div>`;
+}
+
+function renderSku(){
+  const ranked = [...filteredSkuData].sort((a,b)=>{
+    const codeA=a.code.toString().trim();
+    const codeB=b.code.toString().trim();
+    return codeA.localeCompare(codeB,'th',{numeric:true});
+  });
+
+  const start=(currentSkuPage-1)*rowsPerPage;
+  const end=start+rowsPerPage;
+  const pageData=ranked.slice(start,end);
+
+  document.getElementById('sku-tbody').innerHTML=pageData.map((r,i)=>`
+    <tr class="${rankBadge(start+i)}">
+      <td>${start+i+1}</td>
+      <td>${r.group}</td>
+      <td>${r.code}</td>
+      <td>${r.description}</td>
+      <td>${formatNum(r.weight)}</td>
+      <td>${r.unit}</td>
+      <td>${formatNum(r.qtySku)}</td>
+      <td>${formatNum(r.qtyTon)}</td>
+      <td>${formatNum(r.costVat)}</td>
+      <td class="font-bold">${formatNum(r.totalValue)}</td>
+    </tr>`).join('');
+
+  renderSkuPagination(ranked.length);
+}
+
+function renderSkuPagination(total){
+  const totalPages=Math.ceil(total/rowsPerPage);
+  const container=document.getElementById('sku-pagination');
+  container.innerHTML=`
+    <div class="join">
+      <button class="join-item btn btn-sm" ${currentSkuPage===1?'disabled':''} onclick="changeSkuPage(${currentSkuPage-1})">«</button>
+      ${Array.from({length:totalPages},(_,i)=>`
+        <button class="join-item btn btn-sm ${i+1===currentSkuPage?'btn-active':''}" onclick="changeSkuPage(${i+1})">${i+1}</button>`).join('')}
+      <button class="join-item btn btn-sm" ${currentSkuPage===totalPages?'disabled':''} onclick="changeSkuPage(${currentSkuPage+1})">»</button>
+    </div>`;
+}
+
+function changeSkuPage(p){
+  const totalPages=Math.ceil(filteredSkuData.length/rowsPerPage);
+  if(p>=1&&p<=totalPages){currentSkuPage=p;renderSku();}
+}
+
+function renderGroup(){
+  const ranked=[...filteredGroupData].sort((a,b)=>b.totalValue-a.totalValue);
+  const start=(currentGroupPage-1)*rowsPerPage;
+  const end=start+rowsPerPage;
+  const pageData=ranked.slice(start,end);
+  document.getElementById('group-tbody').innerHTML=pageData.map((r,i)=>`
+    <tr class="${rankBadge(start+i)}">
+      <td>${start+i+1}</td><td>${r.group}</td>
+      <td>${formatNum(r.qtySku)}</td><td>${formatNum(r.qtyTon)}</td>
+      <td class="font-bold">${formatNum(r.totalValue)}</td></tr>`).join('');
+  renderGroupPagination(ranked.length);
+}
+
+function renderGroupPagination(total){
+  const totalPages=Math.ceil(total/rowsPerPage);
+  const container=document.getElementById('group-pagination');
+  container.innerHTML=`
+    <div class="join">
+      <button class="join-item btn btn-sm" ${currentGroupPage===1?'disabled':''} onclick="changeGroupPage(${currentGroupPage-1})">«</button>
+      ${Array.from({length:totalPages},(_,i)=>`
+        <button class="join-item btn btn-sm ${i+1===currentGroupPage?'btn-active':''}" onclick="changeGroupPage(${i+1})">${i+1}</button>`).join('')}
+      <button class="join-item btn btn-sm" ${currentGroupPage===totalPages?'disabled':''} onclick="changeGroupPage(${currentGroupPage+1})">»</button>
+    </div>`;
+}
+
+function changeGroupPage(p){
+  const totalPages=Math.ceil(filteredGroupData.length/rowsPerPage);
+  if(p>=1&&p<=totalPages){currentGroupPage=p;renderGroup();}
+}
+
+async function loadData(){
+  const overlay = document.getElementById('loading-overlay');
+  overlay.classList.remove('hidden'); // ✅ แสดง overlay ตอนเริ่มโหลด
+
+  const urlSku="https://docs.google.com/spreadsheets/d/1K3u9XC86xlU2RiQFlJVFEpn4SeEJJwO0bEAs1-6M-kI/gviz/tq?tqx=out:json&sheet=summary-sku";
+  const urlGroup="https://docs.google.com/spreadsheets/d/1K3u9XC86xlU2RiQFlJVFEpn4SeEJJwO0bEAs1-6M-kI/gviz/tq?tqx=out:json&sheet=summary-group";
+  try{
+    const [s,g]=await Promise.all([fetch(urlSku),fetch(urlGroup)]);
+    const [ts,tg]=await Promise.all([s.text(),g.text()]);
+    const jsonSku=JSON.parse(ts.substring(47).slice(0,-2));
+    const jsonGroup=JSON.parse(tg.substring(47).slice(0,-2));
+    skuData=jsonSku.table.rows.filter(r=>r.c[1]).map(r=>({
+      group:r.c[1]?.v||"",code:r.c[2]?.v||"",description:r.c[3]?.v||"",
+      weight:parseFloat(r.c[4]?.v)||0,unit:r.c[5]?.v||"",
+      qtySku:parseFloat(r.c[6]?.v)||0,qtyTon:parseFloat(r.c[7]?.v)||0,
+      costVat:parseFloat(r.c[8]?.v)||0,totalValue:parseFloat(r.c[9]?.v)||0
+    }));
+    groupData=jsonGroup.table.rows.filter(r=>r.c[0]).map(r=>({
+      group:r.c[0]?.v||"",qtySku:parseFloat(r.c[1]?.v)||0,
+      qtyTon:parseFloat(r.c[2]?.v)||0,totalValue:parseFloat(r.c[3]?.v)||0
+    }));
+    filteredSkuData=[...skuData]; filteredGroupData=[...groupData];
+    console.log("✅ Loaded:",skuData.length,"SKU |",groupData.length,"Group");
+  }catch(e){
+    console.error("❌ Load error:",e);
+    alert("❌ ไม่สามารถโหลดข้อมูลจาก Google Sheets ได้");
+  }finally{
+    overlay.classList.add('hidden'); // ✅ ซ่อน overlay เมื่อโหลดเสร็จ
+  }
+}
+
+
+document.getElementById('sku-search').addEventListener('input',e=>{
+  const q=e.target.value.toLowerCase();
+  filteredSkuData=skuData.filter(i=>i.group.toLowerCase().includes(q)||i.code.toLowerCase().includes(q)||i.description.toLowerCase().includes(q));
+  currentSkuPage=1;renderSku();
+});
+document.getElementById('group-search').addEventListener('input',e=>{
+  const q=e.target.value.toLowerCase();
+  filteredGroupData=groupData.filter(i=>i.group.toLowerCase().includes(q));
+  currentGroupPage=1;renderGroup();
+});
+document.getElementById('tab-group').addEventListener('click',()=>{
+  document.getElementById('tab-group').classList.add('tab-active');
+  document.getElementById('tab-sku').classList.remove('tab-active');
+  document.getElementById('group-section').classList.remove('hidden');
+  document.getElementById('sku-section').classList.add('hidden');
+});
+document.getElementById('tab-sku').addEventListener('click',()=>{
+  document.getElementById('tab-sku').classList.add('tab-active');
+  document.getElementById('tab-group').classList.remove('tab-active');
+  document.getElementById('sku-section').classList.remove('hidden');
+  document.getElementById('group-section').classList.add('hidden');
+});
+document.getElementById('export-btn').addEventListener('click',()=>{
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(skuData),'summary-sku');
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(groupData),'summary-group');
+  XLSX.writeFile(wb,'stock-summary.xlsx');
+});
+document.getElementById('refresh-btn').addEventListener('click',async()=>{
+  await loadData();updateSummary();renderSku();renderGroup();
+});
+
+(async()=>{await loadData();updateSummary();renderSku();renderGroup();})();
+
+// 🔹 แสดงได้ครั้งละ 10 ปุ่ม (window pagination)
+function renderSkuPagination(total){
+  const totalPages = Math.ceil(total / rowsPerPage);
+  const container = document.getElementById('sku-pagination');
+  const maxButtons = 10;
+  
+  // คำนวณช่วงปุ่มที่จะแสดง
+  const startPage = Math.floor((currentSkuPage - 1) / maxButtons) * maxButtons + 1;
+  const endPage = Math.min(startPage + maxButtons - 1, totalPages);
+  
+  let html = `<div class="join">`;
+  html += `<button class="join-item btn btn-sm" ${currentSkuPage === 1 ? 'disabled' : ''} onclick="changeSkuPage(${currentSkuPage - 1})">«</button>`;
+  
+  for (let i = startPage; i <= endPage; i++) {
+    html += `<button class="join-item btn btn-sm ${i === currentSkuPage ? 'btn-active' : ''}" onclick="changeSkuPage(${i})">${i}</button>`;
+  }
+
+  html += `<button class="join-item btn btn-sm" ${currentSkuPage === totalPages ? 'disabled' : ''} onclick="changeSkuPage(${currentSkuPage + 1})">»</button>`;
+  html += `</div>`;
+  container.innerHTML = html;
+}
+
+function renderGroupPagination(total){
+  const totalPages = Math.ceil(total / rowsPerPage);
+  const container = document.getElementById('group-pagination');
+  const maxButtons = 10;
+  
+  // คำนวณช่วงปุ่มที่จะแสดง
+  const startPage = Math.floor((currentGroupPage - 1) / maxButtons) * maxButtons + 1;
+  const endPage = Math.min(startPage + maxButtons - 1, totalPages);
+  
+  let html = `<div class="join">`;
+  html += `<button class="join-item btn btn-sm" ${currentGroupPage === 1 ? 'disabled' : ''} onclick="changeGroupPage(${currentGroupPage - 1})">«</button>`;
+  
+  for (let i = startPage; i <= endPage; i++) {
+    html += `<button class="join-item btn btn-sm ${i === currentGroupPage ? 'btn-active' : ''}" onclick="changeGroupPage(${i})">${i}</button>`;
+  }
+
+  html += `<button class="join-item btn btn-sm" ${currentGroupPage === totalPages ? 'disabled' : ''} onclick="changeGroupPage(${currentGroupPage + 1})">»</button>`;
+  html += `</div>`;
+  container.innerHTML = html;
+}
+</script>
+</body>
+</html>
